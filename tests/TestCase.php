@@ -51,7 +51,7 @@ abstract class TestCase extends \Orchestra\Testbench\TestCase
         parent::tearDown();
 
         // clean up tmp directory
-        //\File::deleteDirectory($this->tmpDir, true);
+        \File::deleteDirectory($this->tmpDir, true);
     }
 
     /**
