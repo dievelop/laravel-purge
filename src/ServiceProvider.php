@@ -13,6 +13,10 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
      */
     public function boot()
     {
+        $this->publishes([
+            __DIR__.'/../config/laravel-purge.php' => config_path('laravel-purge.php'),
+        ], 'config');
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 LaravelPurgeCommand::class,
