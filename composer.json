@@ -1,0 +1,34 @@
+{
+    "name": "dievelop/laravel-purge",
+    "description": "Remove expired files from laravel filesystem disks directories",
+    "keywords": [
+        "dievelop",
+        "laravel",
+        "laravel-purge"
+    ],
+    "require": {
+        "php": ">=7.1"
+    },
+    "require-dev": {
+        "laravel/framework": "5.5.x",
+        "phpunit/phpunit": "6.*",
+        "orchestra/testbench": "3.5.x"
+    },
+    "autoload": {
+        "psr-4": {
+            "Dievelop\\LaravelPurge\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Dievelop\\LaravelPurge\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Dievelop\\LaravelPurge\\ServiceProvider"
+            ]
+        }
+    }
+}
