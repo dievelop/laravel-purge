@@ -2,8 +2,12 @@
 
 namespace Dievelop\LaravelPurge\Services;
 
+use DateTime;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Filesystem\FilesystemManager;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 
 class FilePurgeService
@@ -14,14 +18,14 @@ class FilePurgeService
     protected $filesystem;
 
     /**
-     * @var \Illuminate\Filesystem\FilesystemAdapter
+     * @var FilesystemAdapter
      */
     protected $disk;
 
     /**
      * @var array
      */
-    protected $directories = [''];
+    protected $directories = [""];
 
     /**
      * @var boolean
@@ -55,31 +59,25 @@ class FilePurgeService
     public function __construct(FilesystemManager $filesystem)
     {
         $this->filesystem = $filesystem;
-        $this->time = now();
-        $this->extensionsBlacklist(config('laravel-purge.extensions_blacklist', []));
     }
 
     /**
      * @param string $name
-     * @param bool $autoloadConfig
      * @return $this
      */
-    public function disk(string $name, $autoloadConfig = true)
+    public function disk(string $name)
     {
         $this->disk = $this->filesystem->disk($name);
-        if ($autoloadConfig === true) {
-            $this->fromConfig(config('laravel-purge.disks.' . $name, []));
-        }
         return $this;
     }
 
     /**
-     * @param string $path
+     * @param array|string $path
      * @return $this
      */
     public function directory($path = null)
     {
-        $this->directories = array_wrap($path);
+        $this->directories = Arr::wrap($path);
         return $this;
     }
 
@@ -110,12 +108,12 @@ class FilePurgeService
     public function extensions($extensions)
     {
         if (is_string($extensions)) {
-            $extensions = explode(',', $extensions);
+            $extensions = explode(",", $extensions);
         }
 
         if (is_array($extensions)) {
             $this->extensions = collect($extensions)->transform(function ($extension) {
-                return '.' . trim(strtolower(ltrim($extension, '.')));
+                return "." . trim(strtolower(ltrim($extension, ".")));
             })->toArray();
         } else {
             $this->extensions = null;
@@ -131,12 +129,12 @@ class FilePurgeService
     public function extensionsBlacklist($extensions)
     {
         if (is_string($extensions)) {
-            $extensions = explode(',', $extensions);
+            $extensions = explode(",", $extensions);
         }
 
         if (is_array($extensions)) {
             $this->extensionBlacklist = collect($extensions)->transform(function ($extension) {
-                return '.' . trim(strtolower(ltrim($extension, '.')));
+                return "." . trim(strtolower(ltrim($extension, ".")));
             })->toArray();
         } else {
             $this->extensionBlacklist = null;
@@ -146,18 +144,53 @@ class FilePurgeService
     }
 
     /**
-     * @param $config
+     * @return FilePurgeService
+     * @throws \Exception
+     */
+    public function applyDefaultConfig()
+    {
+        return $this->config(Config::get("laravel-purge.defaults", []));
+    }
+
+    /**
+     * @param array|string $config
      * @return $this
      */
-    public function fromConfig(array $config)
+    public function config($config)
     {
-        if (is_array($config)) {
-            $this->directory($config['directory'] ?? null);
-            $this->deleteEmptyDirectory($config['delete_empty_directory'] ?? false);
-            $this->recursive($config['recursive'] ?? false);
-            $this->extensions($config['extensions'] ?? null);
-            $this->minutesOld($config['minutes_old'] ?? 43200); // 30 days = fallback
+        if (is_string($config)) {
+            $config = Config::get("laravel-purge.disks." . $config);
+            if (is_array($config)) {
+                return $this->config($config);
+            } else {
+                throw new \Exception("Invalid config `{$config}` ");
+            }
+        } elseif (is_array($config)) {
+
+            // set config based on passed config array
+            if (isset($config["disk"])) {
+                $this->disk($config["disk"]);
+            }
+            if (isset($config["directory"])) {
+                $this->directory($config["directory"]);
+            }
+            if (isset($config["delete_empty_directory"])) {
+                $this->deleteEmptyDirectory($config["delete_empty_directory"]);
+            }
+            if (isset($config["recursive"])) {
+                $this->recursive($config["recursive"]);
+            }
+            if (isset($config["extensions"])) {
+                $this->extensions($config["extensions"]);
+            }
+            if (isset($config["extensions_blacklist"])) {
+                $this->extensionsBlacklist($config["extensions_blacklist"]);
+            }
+            if (isset($config["minutes_old"])) {
+                $this->minutesOld($config["minutes_old"]);
+            }
         }
+
         return $this;
     }
 
@@ -172,38 +205,80 @@ class FilePurgeService
     }
 
     /**
-     * @param \DateTime $date
+     * @param DateTime $date
      * @return $this
      */
-    public function olderThan(\DateTime $date)
+    public function olderThan(DateTime $date)
     {
         $this->time = Carbon::instance($date);
         return $this;
     }
 
-    public function purge()
+    /**
+     * @return int
+     */
+    public function purge(callable $callback = null)
     {
         if (!$this->disk) {
-            throw new \Exception('No disk set to purge');
+            throw new \Exception("No disk set to purge");
         }
 
+        $purged = 0;
+        $directories = [];
+
         // purge files first
-        foreach($this->directories as $directory) {
-            collect($this->disk->listContents($directory, $this->recursive))->each(function ($item) {
-                if ($this->doDeleteFile($item)) {
-                    $this->disk->delete($item['path']);
+        foreach ($this->directories as $directory) {
+            $this->contents($directory)->each(function ($item) use (&$purged, &$directories, $callback) {
+                if ($item["type"] === "file") {
+                    if ($this->viaCallback($item, $this->doDeleteFile($item), $callback)) {
+                        if ($this->disk->delete($item["path"])) {
+                            $purged++;
+                        }
+                    }
+                } elseif ($item["type"] === "dir" && $this->deleteEmptyDirectory) {
+                    $directories[] = $item;
                 }
             });
 
             // purge empty directories
-            if ($this->deleteEmptyDirectory) {
-                collect($this->disk->listContents($directory, $this->recursive))->each(function ($item) {
-                    if ($this->doDeleteDirectory($item)) {
-                        $this->disk->deleteDirectory($item['path']);
+            if ($this->deleteEmptyDirectory && $directories) {
+                collect($directories)->each(function ($item) use (&$purged, $callback) {
+                    if ($this->viaCallback($item, $this->doDeleteDirectory($item), $callback)) {
+                        if ($this->disk->deleteDirectory($item["path"])) {
+                            $purged++;
+                        }
                     }
                 });
             }
         }
+
+        return $purged;
+    }
+
+    /**
+     * @param $directory
+     * @return \Illuminate\Support\Collection
+     */
+    protected function contents($directory)
+    {
+        return collect($this->disk->listContents($directory, $this->recursive));
+    }
+
+    /**
+     * @param $item
+     * @param $deleting
+     * @param callable|null $callback
+     * @return mixed
+     */
+    protected function viaCallback($item, $deleting, $callback = null)
+    {
+        if (is_callable($callback)) {
+            $response = call_user_func($callback, $item, $deleting);
+            if (is_bool($response)) {
+                return $response;
+            }
+        }
+        return $deleting;
     }
 
     /**
@@ -212,26 +287,21 @@ class FilePurgeService
      */
     protected function doDeleteFile($item)
     {
-        // check type
-        if ($item['type'] !== 'file') {
-            return false;
-        }
-
         // check timestamp
-        if ($item['timestamp'] > $this->time->timestamp) {
+        if ($item["timestamp"] > $this->time->timestamp) {
             return false;
         }
 
         // check blacklist of extensions
         if ($this->extensionBlacklist) {
-            if (Str::endsWith(strtolower($item['basename']), $this->extensionBlacklist)) {
+            if (Str::endsWith(strtolower($item["basename"]), $this->extensionBlacklist)) {
                 return false;
             }
         }
 
         // check whitelist of extensions
         if ($this->extensions) {
-            if (!Str::endsWith(strtolower($item['basename']), $this->extensions)) {
+            if (!Str::endsWith(strtolower($item["basename"]), $this->extensions)) {
                 return false;
             }
         }
@@ -245,13 +315,8 @@ class FilePurgeService
      */
     protected function doDeleteDirectory($item)
     {
-        // check type
-        if ($item['type'] !== 'dir') {
-            return false;
-        }
-
         // check if directory is empty
-        $files = $this->disk->files($item['path']);
+        $files = $this->disk->files($item["path"]);
         if (!empty($files)) {
             return false;
         }

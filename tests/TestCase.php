@@ -2,33 +2,70 @@
 
 namespace Dievelop\LaravelPurge\Tests;
 
+use Dievelop\LaravelPurge\ServiceProvider;
+use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\File;
+
 /**
  * Class TestCase
  */
 abstract class TestCase extends \Orchestra\Testbench\TestCase
 {
+    protected $rootDir;
     protected $tmpDir;
 
     protected function getPackageProviders($app)
     {
-        return [\Dievelop\LaravelPurge\ServiceProvider::class];
+        return [ServiceProvider::class];
     }
 
     /**
      * Define environment setup.
      *
-     * @param  \Illuminate\Foundation\Application $app
+     * @param Application $app
      * @return void
      */
     protected function getEnvironmentSetUp($app)
     {
-        $app['config']->set('filesystems.disks.local', [
-            'driver' => 'local',
-            'root' => __DIR__ . '/tmp/',
+        // set
+        $app['config']->set('laravel-purge.defaults', [
+            'extensions_blacklist' => [
+                '.gitignore',
+                '.gitkeep',
+            ],
+            'extensions' => [
+                '.xyz'
+            ],
+            'directory' => '/',
+            'recursive' => false,
+            'minutes_old' => 60 * 24 * 365, // 1 year
+            'delete_empty_directory' => false,
         ]);
 
-        $app['config']->set('laravel-purge.disks.local', [
-            'directory' => '/',
+        // setup first disk with corresponding config
+        $app['config']->set('filesystems.disks.disk_1', [
+            'driver' => 'local',
+            'root' => __DIR__ . '/tmp/disk_1/',
+        ]);
+
+        $app['config']->set('laravel-purge.disks.config_1', [
+            'disk' => 'disk_1',
+            'directories' => '/',
+            'recursive' => false,
+            'extensions' => [],
+            'minutes_old' => 60,
+            'delete_empty_directory' => false,
+        ]);
+
+        // set up second disk with corresponding disk
+        $app['config']->set('filesystems.disks.disk_2', [
+            'driver' => 'local',
+            'root' => __DIR__ . '/tmp/disk_2/',
+        ]);
+
+        $app['config']->set('laravel-purge.disks.config_2', [
+            'disk' => 'disk_2',
+            'directories' => '/',
             'recursive' => false,
             'extensions' => [],
             'minutes_old' => 60,
@@ -36,22 +73,21 @@ abstract class TestCase extends \Orchestra\Testbench\TestCase
         ]);
     }
 
-    public function setUp()
+    public function setUp(): void
     {
         parent::setUp();
 
         // create & chmod temporary directory we will work from during the test
-        $this->tmpDir = __DIR__ . '/tmp/';
-
-        \File::deleteDirectory($this->tmpDir, true);
+        $this->rootDir = __DIR__ . '/tmp/';
+        $this->tmpDir = $this->rootDir;
     }
 
-    public function tearDown()
+    public function tearDown(): void
     {
-        parent::tearDown();
-
         // clean up tmp directory
-        \File::deleteDirectory($this->tmpDir, true);
+        File::deleteDirectory($this->rootDir, true);
+
+        parent::tearDown();
     }
 
     /**
@@ -59,7 +95,7 @@ abstract class TestCase extends \Orchestra\Testbench\TestCase
      */
     public function makeDir($path = '')
     {
-        \File::makeDirectory($this->tmpDir . $path, 0775, true);
+        File::makeDirectory($this->tmpDir . $path, 0775, true);
     }
 
     /**
@@ -71,7 +107,7 @@ abstract class TestCase extends \Orchestra\Testbench\TestCase
         $dir = $this->tmpDir . $path;
         $this->assertEquals(
             $expectedFiles,
-            $actualFiles = count(\File::files($dir)),
+            $actualFiles = count(File::files($dir)),
             "Expected {$expectedFiles} files but found {$actualFiles} files [{$dir}]"
         );
     }
@@ -86,7 +122,7 @@ abstract class TestCase extends \Orchestra\Testbench\TestCase
 
         $actualFiles = array_map(function ($file) use ($dir) {
             return ltrim(str_replace($dir, '', $file), '/');
-        }, \File::allFiles($dir, true));
+        }, File::allFiles($dir, true));
 
         sort($expectedFiles);
         sort($actualFiles);
@@ -116,13 +152,14 @@ abstract class TestCase extends \Orchestra\Testbench\TestCase
         $this->assertEquals(
             $expectedDirs,
             $actualDirs,
-            "Expected [" . join(', ', $expectedDirs) . "] directories but found [" . join(', ', $actualDirs) . "] directories [{$dir}]"
+            "Expected [" . join(', ', $expectedDirs) . "] directories but found [" . join(', ',
+                $actualDirs) . "] directories [{$dir}]"
         );
     }
 
     private function allDirectories($path)
     {
-        $dirs = \File::directories($path);
+        $dirs = File::directories($path);
         foreach ($dirs as $dir) {
             $dirs = array_merge($dirs, $this->allDirectories($dir));
         }
@@ -141,11 +178,11 @@ abstract class TestCase extends \Orchestra\Testbench\TestCase
             }
         } else {
             $dir = dirname($this->tmpDir . $path);
-            if (!\File::isDirectory($dir)) {
-                \File::makeDirectory($dir, 0755);
+            if (!File::isDirectory($dir)) {
+                File::makeDirectory($dir, 0755);
             }
 
-            \File::put($this->tmpDir . $path, 'TEST:' . now()->toDateTimeString());
+            File::put($this->tmpDir . $path, 'TEST:' . now()->toDateTimeString());
 
             if ($minutes) {
                 touch($this->tmpDir . $path, now()->timestamp + ($minutes * 60));

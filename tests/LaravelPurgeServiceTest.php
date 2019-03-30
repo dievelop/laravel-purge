@@ -6,6 +6,7 @@ use Dievelop\LaravelPurge\Services\FilePurgeService;
 
 /**
  * Class LaravelPurgeServiceTest
+ * @covers \Dievelop\LaravelPurge\Services\FilePurgeService
  */
 class LaravelPurgeServiceTest extends TestCase
 {
@@ -14,12 +15,16 @@ class LaravelPurgeServiceTest extends TestCase
      */
     protected $service;
 
-    public function setUp()
+    public function setUp(): void
     {
         parent::setUp();
 
+        // set up the file purg service
         $this->service = new FilePurgeService($this->app->filesystem);
-        $this->service->disk('local');
+        // set the config
+        $this->service->config('config_1');
+        // set our test directory so we do not need to pass it on each assertion
+        $this->tmpDir = $this->rootDir . '/disk_1/';
     }
 
     /**
@@ -202,5 +207,76 @@ class LaravelPurgeServiceTest extends TestCase
         $this->assertFiles([
             'directory_3/file.txt'
         ]);
+    }
+
+    /**
+     * @test
+     */
+    public function should_respect_callback_response_for_files()
+    {
+        // returning nothing should respect original setting
+        $this->makeFile('file.txt', -5);
+        $this->service->minutesOld(1)->purge(function($item, $deleting){
+            $this->assertEquals('file.txt', $item['basename']);
+            $this->assertTrue($deleting);
+        });
+        $this->assertFiles([]);
+
+        $this->makeFile('file.txt', 0);
+        $this->service->minutesOld(1)->purge(function($item, $deleting){
+            return null;
+        });
+        $this->assertFiles(['file.txt']);
+
+        // returning false should keep file
+        $this->makeFile('file.txt', -5);
+        $this->service->minutesOld(1)->purge(function($item, $deleting){
+            return false;
+        });
+        $this->assertFiles(['file.txt']);
+
+        // returning true should remove file
+        $this->makeFile('file.txt', 0);
+        $this->service->minutesOld(1)->purge(function($item, $deleting){
+            return true;
+        });
+        $this->assertFiles([]);
+    }
+
+    /**
+     * @test
+     */
+    public function should_respect_callback_response_for_directories()
+    {
+        $this->makeDir('directory_1');
+        $this->service->minutesOld(1)->deleteEmptyDirectory()->recursive()->purge(function($item, $deleting){
+            $this->assertEquals('dir', $item['type']);
+            $this->assertEquals('directory_1', $item['basename']);
+            $this->assertTrue($deleting);
+        });
+        $this->assertDirs([]);
+
+        $this->makeFile('directory_1/file.txt', -5);
+        $this->service->minutesOld(1)->deleteEmptyDirectory()->recursive()->purge(function($item, $deleting){
+            dump($item);
+            return null;
+        });
+        $this->assertDirs([]);
+
+        // returning false should keep directory
+        $this->makeDir('directory_1');
+        $this->service->minutesOld(1)->deleteEmptyDirectory()->recursive()->purge(function($item, $deleting){
+            return false;
+        });
+        $this->assertDirs(['directory_1']);
+
+        // returning true should remove directory
+        $this->makeFile('directory_1/file.txt', 0);
+        $this->service->minutesOld(1)->deleteEmptyDirectory()->recursive()->purge(function($item, $deleting){
+            if ($item['type'] === 'dir') {
+                return true;
+            }
+        });
+        $this->assertDirs([]);
     }
 }
