@@ -2,7 +2,8 @@
 
 namespace Dievelop\LaravelPurge;
 
-use Dievelop\LaravelPurge\Commands\LaravelPurgeCommand;
+use Dievelop\LaravelPurge\Commands\LaravelPurgeCacheCommand;
+use Dievelop\LaravelPurge\Commands\LaravelPurgeFilesCommand;
 
 class ServiceProvider extends \Illuminate\Support\ServiceProvider
 {
@@ -13,9 +14,14 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
      */
     public function boot()
     {
+        $this->publishes([
+            __DIR__ . '/../config/laravel-purge.php' => config_path('laravel-purge.php'),
+        ], 'config');
+
         if ($this->app->runningInConsole()) {
             $this->commands([
-                LaravelPurgeCommand::class,
+                LaravelPurgeFilesCommand::class,
+                LaravelPurgeCacheCommand::class,
             ]);
         }
     }
@@ -28,7 +34,7 @@ class ServiceProvider extends \Illuminate\Support\ServiceProvider
     public function register()
     {
         $this->mergeConfigFrom(
-            __DIR__ . '/../config/laravel-purge.php', 'laravel-purge'
+            __DIR__ . '/../config/laravel-purge-defaults.php', 'laravel-purge'
         );
     }
 }
