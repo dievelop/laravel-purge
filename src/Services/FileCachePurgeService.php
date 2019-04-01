@@ -67,7 +67,6 @@ class FileCachePurgeService
     {
         // example cache content: {unix_timestamp}{cache_content} => eg: 1554148303s:5:"value";
         $timestamp = file_get_contents($path, false, null, 0, 10);
-        echo $timestamp . PHP_EOL;
         if (is_numeric($timestamp)) {
             return $timestamp;
         }
