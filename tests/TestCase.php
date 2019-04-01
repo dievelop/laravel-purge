@@ -71,6 +71,17 @@ abstract class TestCase extends \Orchestra\Testbench\TestCase
             'minutes_old' => 60,
             'delete_empty_directory' => false,
         ]);
+
+        // set up file cache config
+        $app['config']->set('cache', [
+            'default' => 'file',
+            'stores' => [
+                'file' => [
+                    'driver' => 'file',
+                    'path' => __DIR__ . '/tmp/',
+                ]
+            ]
+        ]);
     }
 
     public function setUp(): void

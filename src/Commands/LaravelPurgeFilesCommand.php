@@ -6,7 +6,6 @@ use Dievelop\LaravelPurge\Services\FilePurgeService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Config;
-use Symfony\Component\Console\Output\OutputInterface;
 
 class LaravelPurgeFilesCommand extends Command
 {
@@ -61,9 +60,9 @@ class LaravelPurgeFilesCommand extends Command
                         ->applyDefaultConfig()
                         ->config($configKey)
                         ->purge(function ($item, $deleting) {
-                            $prefix = $this->option('dry-run') ? '<fg=magenta>[DRY-RUN] ' : '';
-                            $check = $deleting ? '<fg=red>✘' : '<fg=green>✔';
-                            if ($deleting || $this->option('debug')) {
+                            if ($this->option('debug')) {
+                                $prefix = $this->option('dry-run') ? '<fg=magenta>[DRY-RUN] ' : '';
+                                $check = $deleting ? '<fg=red>✘' : '<fg=green>✔';
                                 $this->comment(" - {$prefix}{$check} " . $item['path']);
                             }
 

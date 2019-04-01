@@ -171,8 +171,8 @@ class FilePurgeService
             if (isset($config["disk"])) {
                 $this->disk($config["disk"]);
             }
-            if (isset($config["directory"])) {
-                $this->directory($config["directory"]);
+            if (isset($config["directories"])) {
+                $this->directory($config["directories"]);
             }
             if (isset($config["delete_empty_directory"])) {
                 $this->deleteEmptyDirectory($config["delete_empty_directory"]);
@@ -215,7 +215,9 @@ class FilePurgeService
     }
 
     /**
+     * @param callable|null $callback
      * @return int
+     * @throws \Exception
      */
     public function purge(callable $callback = null)
     {
@@ -224,32 +226,46 @@ class FilePurgeService
         }
 
         $purged = 0;
-        $directories = [];
 
         // purge files first
         foreach ($this->directories as $directory) {
-            $this->contents($directory)->each(function ($item) use (&$purged, &$directories, $callback) {
-                if ($item["type"] === "file") {
-                    if ($this->viaCallback($item, $this->doDeleteFile($item), $callback)) {
-                        if ($this->disk->delete($item["path"])) {
-                            $purged++;
-                        }
+            $purged += $this->purgeDirectory($directory, $callback);
+        }
+
+        return $purged;
+    }
+
+    protected function purgeDirectory(string $directory, callable $callback = null)
+    {
+        $purged = 0;
+
+        $this->contents($directory)->each(function ($item) use (&$purged, &$directories, $callback) {
+            if ($item["type"] === "file") {
+                if ($this->viaCallback($item, $this->doDeleteFile($item), $callback)) {
+                    if ($this->disk->delete($item["path"])) {
+                        $purged++;
                     }
-                } elseif ($item["type"] === "dir" && $this->deleteEmptyDirectory) {
+                }
+            } elseif ($item["type"] === "dir") {
+                if ($this->deleteEmptyDirectory) {
                     $directories[] = $item;
                 }
-            });
 
-            // purge empty directories
-            if ($this->deleteEmptyDirectory && $directories) {
-                collect($directories)->each(function ($item) use (&$purged, $callback) {
-                    if ($this->viaCallback($item, $this->doDeleteDirectory($item), $callback)) {
-                        if ($this->disk->deleteDirectory($item["path"])) {
-                            $purged++;
-                        }
-                    }
-                });
+                if ($this->recursive) {
+                    $purged += $this->purgeDirectory($item['path'], $callback);
+                }
             }
+        });
+
+        // purge empty directories
+        if ($this->deleteEmptyDirectory && $directories) {
+            collect($directories)->each(function ($item) use (&$purged, $callback) {
+                if ($this->viaCallback($item, $this->doDeleteDirectory($item), $callback)) {
+                    if ($this->disk->deleteDirectory($item["path"])) {
+                        $purged++;
+                    }
+                }
+            });
         }
 
         return $purged;
@@ -261,7 +277,7 @@ class FilePurgeService
      */
     protected function contents($directory)
     {
-        return collect($this->disk->listContents($directory, $this->recursive));
+        return collect($this->disk->listContents($directory));
     }
 
     /**
