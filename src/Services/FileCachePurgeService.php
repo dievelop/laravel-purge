@@ -2,6 +2,7 @@
 
 namespace Dievelop\LaravelPurge\Services;
 
+use FilesystemIterator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Config;
 use RecursiveDirectoryIterator;
@@ -23,7 +24,7 @@ class FileCachePurgeService
             throw new \Exception("No directory set in `cache.stores.file.path`");
         }
 
-        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory));
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS));
         foreach ($iterator as $file) {
             /** @var SplFileInfo $file */
             if ($file->isDir()) {
