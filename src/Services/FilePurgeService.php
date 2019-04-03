@@ -3,12 +3,16 @@
 namespace Dievelop\LaravelPurge\Services;
 
 use DateTime;
+use DirectoryIterator;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Filesystem\FilesystemManager;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
+use League\Flysystem\Adapter\Local;
+use League\Flysystem\Util;
+use SplFileInfo;
 
 class FilePurgeService
 {
@@ -239,7 +243,7 @@ class FilePurgeService
     {
         $purged = 0;
 
-        $this->contents($directory)->each(function ($item) use (&$purged, &$directories, $callback) {
+        $this->contents($directory, function ($item) use (&$purged, &$directories, $callback) {
             if ($item["type"] === "file") {
                 if ($this->viaCallback($item, $this->doDeleteFile($item), $callback)) {
                     if ($this->disk->delete($item["path"])) {
@@ -273,11 +277,75 @@ class FilePurgeService
 
     /**
      * @param $directory
-     * @return \Illuminate\Support\Collection
+     * @param callable|null $callback
+     * @return void
      */
-    protected function contents($directory)
+    protected function contents($directory, callable $callback = null)
     {
-        return collect($this->disk->listContents($directory));
+        // check if the directory path has a directory wildcard *
+        $firstWildcardPosition = mb_strpos($directory, '/*');
+        if ($firstWildcardPosition !== false) {
+
+            // break the path into two chunks: everything before the first wildcard and after it
+            $pathBefore = Str::substr($directory, 0, $firstWildcardPosition);
+            $pathAfter = Str::substr($directory, $firstWildcardPosition + 2);
+
+            // get all contents of everything until the first wildcard
+            $this->contents($pathBefore, function ($file) use ($callback, $pathAfter) {
+                // for each directory we find we continue searching
+                if ($file['type'] === 'dir') {
+                    $this->contents(
+                        $file['path'] . $pathAfter,
+                        $callback
+                    );
+                }
+            });
+        } else {
+            // for local file system we user our own iterator to speed up the process a bit.
+            if ($this->disk->getDriver()->getAdapter() instanceof Local) {
+                $path = $this->disk->getDriver()->getAdapter()->applyPathPrefix($directory);
+                $iterator = new DirectoryIterator($path);
+                foreach ($iterator as $file) {
+                    if ($file->isDot()) {
+                        continue;
+                    }
+
+                    /** @var DirectoryIterator $file */
+                    if ($callback) {
+                        if (call_user_func($callback, $this->mapFileInfo($file)) === false) {
+                            break;
+                        }
+                    }
+                }
+            } else {
+                collect($this->disk->listContents($directory))->each($callback);
+            }
+        }
+    }
+
+    /**
+     * Took from League\Flysystem\Adapter\Local;
+     * @param SplFileInfo $file
+     *
+     * @return array
+     */
+    protected function mapFileInfo(SplFileInfo $file)
+    {
+        $path = $this->disk->getDriver()->getAdapter()->removePathPrefix($file->getPathname());
+        trim(str_replace('\\', '/', $path), '/');
+
+        $info = [
+            'type' => $file->getType(),
+            'path' => $path
+        ];
+
+        $info['timestamp'] = $file->getMTime();
+
+        if ($info['type'] === 'file') {
+            $info['size'] = $file->getSize();
+        }
+
+        return $info + Util::pathinfo($info['path']);
     }
 
     /**
