@@ -258,7 +258,6 @@ class LaravelPurgeServiceTest extends TestCase
 
         $this->makeFile('directory_1/file.txt', -5);
         $this->service->minutesOld(1)->deleteEmptyDirectory()->recursive()->purge(function($item, $deleting){
-            dump($item);
             return null;
         });
         $this->assertDirs([]);
@@ -278,5 +277,49 @@ class LaravelPurgeServiceTest extends TestCase
             }
         });
         $this->assertDirs([]);
+    }
+
+    /**
+     * @test
+     */
+    public function should_undertand_wildcard_directories()
+    {
+        $this->makeFile('directory_1/file.txt', -5);
+        $this->makeFile('directory_1/subdir/file.txt', -5);
+        $this->makeFile('directory_2/subdir/file.txt', -5);
+
+        // delete all files in
+        $this->service
+            ->minutesOld(1)
+            ->directory(['/*/subdir/'])
+            ->purge();
+
+        // we should only have the file left that is not in the subdir
+        $this->assertFiles([
+            'directory_1/file.txt'
+        ]);
+    }
+
+    /**
+     * @test
+     */
+    public function should_undertand_deep_wildcard_directories()
+    {
+        $this->makeFile('dir1/dir2/dir3/dir4/dir5/file.txt', -5);
+        $this->makeFile('dir1/dir2/dir3/not_this_dir/dir5/file.txt', -5);
+        $this->makeFile('dir1/dir2/dir3/not_this_dir/file.txt', -5);
+        $this->makeFile('dir1/xxxx/yyyy/dir4/dir5/file.txt', -5);
+
+        // delete all files in
+        $this->service
+            ->minutesOld(1)
+            ->directory(['/dir1/*/*/dir4/*'])
+            ->purge();
+
+        // we should only keep 1 file
+        $this->assertFiles([
+            'dir1/dir2/dir3/not_this_dir/dir5/file.txt',
+            'dir1/dir2/dir3/not_this_dir/file.txt'
+        ]);
     }
 }

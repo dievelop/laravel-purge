@@ -190,7 +190,7 @@ abstract class TestCase extends \Orchestra\Testbench\TestCase
         } else {
             $dir = dirname($this->tmpDir . $path);
             if (!File::isDirectory($dir)) {
-                File::makeDirectory($dir, 0755);
+                File::makeDirectory($dir, 0755, true);
             }
 
             File::put($this->tmpDir . $path, 'TEST:' . now()->toDateTimeString());

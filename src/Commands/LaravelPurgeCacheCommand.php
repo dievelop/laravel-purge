@@ -51,13 +51,11 @@ class LaravelPurgeCacheCommand extends Command
             $this->line("Purging...");
             $purged = $this->service
                 ->purge(function ($path, $expired) {
+                    $check = $expired ? '<fg=red>✘' : '<fg=green>✔';
                     if ($this->option('debug')) {
-                        $prefix = $this->option('dry-run') ? '<fg=magenta>[DRY-RUN] ' : '';
-                        $check = $expired ? '<fg=red>✘' : '<fg=green>✔';
-                        $this->comment(" - {$prefix}{$check} " . $path);
-                    }
-
-                    if ($this->option('dry-run')) {
+                        $this->comment(" - {$check} " . $path);
+                    } else if ($this->option('dry-run')) {
+                        $this->comment("<fg=magenta>[DRY-RUN] - {$check} " . $path);
                         return false;
                     }
                 });
