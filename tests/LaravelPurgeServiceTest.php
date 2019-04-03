@@ -322,4 +322,26 @@ class LaravelPurgeServiceTest extends TestCase
             'dir1/dir2/dir3/not_this_dir/file.txt'
         ]);
     }
+
+    /**
+     * @test
+     */
+    public function should_ignore_non_existing_directories()
+    {
+        $this->makeFile('dir1/subdir/file.txt', -5);
+        $this->makeFile('dir2/subdir/file.txt', -5);
+        $this->makeFile('dir3/otherdir/file.txt', -5);
+
+        // delete all files in
+        $this->service
+            ->minutesOld(1)
+            ->directory(['/*/subdir/'])
+            ->extensions(['txt'])
+            ->purge();
+
+        // we should only keep 1 file
+        $this->assertFiles([
+            'dir3/otherdir/file.txt'
+        ]);
+    }
 }

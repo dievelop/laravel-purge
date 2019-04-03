@@ -303,6 +303,13 @@ class FilePurgeService
         } else {
             // for local file system we user our own iterator to speed up the process a bit.
             if ($this->disk->getDriver()->getAdapter() instanceof Local) {
+
+                // check if directory even exists
+                $directory = trim($directory, '/');
+                if ($directory && !$this->disk->has($directory)) {
+                    return;
+                }
+
                 $path = $this->disk->getDriver()->getAdapter()->applyPathPrefix($directory);
                 $iterator = new DirectoryIterator($path);
                 foreach ($iterator as $file) {
