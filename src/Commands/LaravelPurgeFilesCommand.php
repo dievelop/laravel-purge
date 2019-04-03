@@ -60,13 +60,11 @@ class LaravelPurgeFilesCommand extends Command
                         ->applyDefaultConfig()
                         ->config($configKey)
                         ->purge(function ($item, $deleting) {
+                            $check = $deleting ? '<fg=red>✘' : '<fg=green>✔';
                             if ($this->option('debug')) {
-                                $prefix = $this->option('dry-run') ? '<fg=magenta>[DRY-RUN] ' : '';
-                                $check = $deleting ? '<fg=red>✘' : '<fg=green>✔';
-                                $this->comment(" - {$prefix}{$check} " . $item['path']);
-                            }
-
-                            if ($this->option('dry-run')) {
+                                $this->comment(" - {$check} " . $item['path']);
+                            } else if ($this->option('dry-run')) {
+                                $this->comment("<fg=magenta>[DRY-RUN] - {$check} " . $item['path']);
                                 return false;
                             }
                         });
